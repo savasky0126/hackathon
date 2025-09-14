@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ドラッグで写真を配置して起床タイマー</title>
+  <style>
+    :root {
+      --bg: #0f1724;
+      --card: #0b1220;
+      --muted: #9aa4b2;
+      --accent: #60a5fa;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans JP', YuGothic, Meiryo, sans-serif;
+      background: linear-gradient(180deg, #071029 0%, #081827 100%);
+      color: #000000
+    }
+
+    .container {
+      max-width: 920px;
+      margin: 28px auto;
+      padding: 20px;
+    }
+
+    /* 左カラム */
+    .left {
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 6px 18px rgba(2, 6, 23, 0.6);
+      min-height: 360px;
+      display: flex;
+      flex-direction: column;
+      max-width: 320px;
+      margin: auto
+    }
+
+    .drop-area {
+      flex: 0 0 220px;
+      border: 2px dashed rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+    }
+
+    .drop-area.hover {
+      border-color: rgba(96, 165, 250, 0.9);
+      box-shadow: 0 6px 20px rgba(96, 165, 250, 0.08)
+    }
+
+    .drop-area img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: cover;
+      display: block
+    }
+
+    .drop-hint {
+      position: absolute;
+      text-align: center;
+      padding: 12px;
+      color: var(--muted);
+      font-size: 14px
+    }
+
+    .controls {
+      margin-top: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px
+    }
+
+    label {
+      font-size: 14px;
+      color: var(--muted)
+    }
+
+    input[type=time] {
+      appearance: none;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 10px;
+      border-radius: 8px;
+      color: inherit;
+      font-size: 16px
+    }
+
+    /* スタートボタン（下中央） */
+    .footer-area {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 20px;
+      display: flex;
+      justify-content: center;
+      pointer-events: none
+    }
+
+    .start-wrap {
+      pointer-events: auto
+    }
+
+    .start-btn {
+      background: linear-gradient(180deg, var(--accent), #3b82f6);
+      padding: 14px 28px;
+      border-radius: 14px;
+      border: none;
+      color: white;
+      font-weight: 700;
+      font-size: 18px;
+      box-shadow: 0 8px 30px rgba(96, 165, 250, 0.18);
+      cursor: pointer
+    }
+
+    .start-btn:active {
+      transform: translateY(1px)
+    }
+
+    .status {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 14px
+    }
+
+    .photo-gallery img {
+      width: 80px;
+      height: 60px;
+      object-fit: cover;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+
+    @media(max-width:720px) {
+      .container {
+        padding: 12px
+      }
+
+      .footer-area {
+        bottom: 12px
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <section class="left">
+      <div class="photo-gallery" id="photoGallery">
+        <img src="s1.png" draggable="true" alt="photo1">
+        <img src="s2.png" draggable="true" alt="photo2">
+        <img src="s3.png" draggable="true" alt="photo3">
+        <img src="s4.png" draggable="true" alt="photo4">
+        <!-- 必要なだけ追加 -->
+      </div>
+
+      <div class="drop-area" id="dropArea" aria-label="画像ドロップ領域" tabindex="0">
+        <div class="drop-hint" id="dropHint">ここに写真をドラッグ＆ドロップ<br>もしくはクリックして選択</div>
+        <img id="preview" alt="プレビュー画像" style="display:none" />
+        <input id="fileInput" type="file" accept="image/*" style="display:none">
+      </div>
+
+      <div class="controls">
+        <label for="wakeTime">起きる時間を設定</label>
+        <input id="wakeTime" type="time" />
+        <div class="status" id="status">まだタイマーはセットされていません。</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="footer-area">
+    <div class="start-wrap">
+      <button id="startBtn" class="start-btn">スタート</button>
+    </div>
+  </div>
+  <script>
+    // 横スクロールをドラッグで操作できるようにする処理
+    const gallery = document.getElementById('photoGallery');
+    let isDown = false;
+    let startX;
+    let scrollLeft;
+
+    gallery.addEventListener('mousedown', (e) => {
+      isDown = true;
+      gallery.classList.add('active');
+      startX = e.pageX - gallery.offsetLeft;
+      scrollLeft = gallery.scrollLeft;
+    });
+    gallery.addEventListener('mouseleave', () => isDown = false);
+    gallery.addEventListener('mouseup', () => isDown = false);
+    gallery.addEventListener('mousemove', (e) => {
+      if (!isDown) return;
+      e.preventDefault();
+      const x = e.pageX - gallery.offsetLeft;
+      const walk = (x - startX);
+      gallery.scrollLeft = scrollLeft - walk;
+    });
+
+    // ドラッグ開始時にDataTransferに画像URLを入れる
+    gallery.querySelectorAll('img').forEach(img => {
+      img.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/plain', img.src);
+      });
+    });
+
+    // ドラッグ＆ドロップ処理
+    const drop = document.getElementById('dropArea');
+    const fileInput = document.getElementById('fileInput');
+    const preview = document.getElementById('preview');
+    const dropHint = document.getElementById('dropHint');
+
+    drop.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+    ;['dragenter', 'dragover'].forEach(ev => {
+      drop.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); drop.classList.add('hover'); });
+    });
+    ;['dragleave', 'drop'].forEach(ev => {
+      drop.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); drop.classList.remove('hover'); });
+    });
+
+    drop.addEventListener('drop', e => {
+      const dt = e.dataTransfer;
+      if (!dt) return;
+
+      // ファイルをドロップした場合
+      if (dt.files && dt.files.length > 0) {
+        handleFiles(dt.files);
+      } else {
+        // ギャラリーの画像をドロップした場合
+        const src = dt.getData('text/plain');
+        if (src) {
+          preview.src = src;
+          preview.style.display = 'block';
+          dropHint.style.display = 'none';
+        }
+      }
+    });
+
+    function handleFiles(files) {
+      if (!files || files.length === 0) return;
+      const file = files[0];
+      if (!file.type.startsWith('image/')) {
+        alert('画像ファイルを選択してください');
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      preview.src = url; preview.style.display = 'block'; dropHint.style.display = 'none';
+    }
+
+    // タイマー機能
+    const wakeTimeInput = document.getElementById('wakeTime');
+    const startBtn = document.getElementById('startBtn');
+    const status = document.getElementById('status');
+    let alarmTimeout = null;
+
+    function formatTimeHM(d) {
+      const h = String(d.getHours()).padStart(2, '0');
+      const m = String(d.getMinutes()).padStart(2, '0');
+      return `${h}:${m}`;
+    }
+
+    wakeTimeInput.addEventListener('input', () => { status.textContent = 'まだスタートされていません。' });
+
+    startBtn.addEventListener('click', () => {
+      const timeValue = wakeTimeInput.value;
+      if (!timeValue) { alert('起きる時間を選んでください。'); return; }
+
+      // 現在時刻と指定時間の差を計算
+      const [hh, mm] = timeValue.split(':').map(x => parseInt(x, 10));
+      const now = new Date();
+      const target = new Date(now);
+      target.setHours(hh, mm, 0, 0);
+      if (target <= now) {
+        // 指定時刻が今日の過去なら翌日
+        target.setDate(target.getDate() + 1);
+      }
+      const diff = target - now;
+
+      if (alarmTimeout) clearTimeout(alarmTimeout);
+      alarmTimeout = setTimeout(() => {
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'sine'; o.frequency.value = 880;
+          g.gain.value = 0.0025;
+          o.connect(g); g.connect(ctx.destination);
+          o.start();
+          setTimeout(() => { o.stop(); ctx.close(); }, 1500);
+        } catch (e) { }
+        alert('設定した時間になりました！');
+        status.textContent = 'アラームが鳴りました。';
+        alarmTimeout = null;
+      }, diff);
+
+      status.textContent = `アラームセット済 — ${formatTimeHM(target)} に鳴ります（${Math.round(diff / 60000)}分後）`;
+    });
+
+    // キーボード操作でのアクセシビリティ
+    drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+
+    // ページを離れるときに確認
+    window.addEventListener('beforeunload', e => {
+      if (alarmTimeout) { e.preventDefault(); e.returnValue = ''; }
+    });
+  </script>
+</body>
+
+</html>
